@@ -6,6 +6,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/hangxie/parquet-go/v3/common"
 	"github.com/hangxie/parquet-go/v3/parquet"
 
 	pio "github.com/hangxie/parquet-tools/io"
@@ -29,7 +30,7 @@ type Cmd struct {
 }
 
 // parseFieldEncodings parses field-specific encoding specifications from "field.path=ENCODING" format
-// and returns a map from field path to encoding. Field paths use "." as delimiter.
+// and returns a map from normalized field path to encoding.
 func (c Cmd) parseFieldEncodings() (map[string]string, error) {
 	result := make(map[string]string)
 	for _, spec := range c.FieldEncoding {
@@ -68,13 +69,13 @@ func (c Cmd) parseFieldEncodings() (map[string]string, error) {
 			return nil, fmt.Errorf("[%s] encoding is only allowed with data page version 2 for field [%s]", encoding, fieldPath)
 		}
 
-		result[fieldPath] = strings.ToUpper(encoding)
+		result[pio.NormalizeFieldPath(fieldPath, c.ReadOption.FieldDelimiter)] = strings.ToUpper(encoding)
 	}
 	return result, nil
 }
 
 // parseFieldCompressions parses field-specific compression specifications from "field.path=CODEC" format
-// and returns a map from field path to compression codec. Field paths use "." as delimiter.
+// and returns a map from normalized field path to compression codec.
 func (c Cmd) parseFieldCompressions() (map[string]string, error) {
 	result := make(map[string]string)
 	for _, spec := range c.FieldCompression {
@@ -99,7 +100,7 @@ func (c Cmd) parseFieldCompressions() (map[string]string, error) {
 			return nil, fmt.Errorf("invalid compression codec [%s] for field [%s], valid codecs: %s", codec, fieldPath, strings.Join(pio.ValidCompressionCodecs, ", "))
 		}
 
-		result[fieldPath] = codec
+		result[pio.NormalizeFieldPath(fieldPath, c.ReadOption.FieldDelimiter)] = codec
 	}
 	return result, nil
 }
@@ -138,7 +139,7 @@ func (c Cmd) parseFieldBloomFilters() (map[string]string, error) {
 			}
 		}
 
-		result[fieldPath] = value
+		result[pio.NormalizeFieldPath(fieldPath, c.ReadOption.FieldDelimiter)] = value
 	}
 	return result, nil
 }
@@ -148,7 +149,7 @@ func (c Cmd) modifySchemaTree(schemaTree *pschema.SchemaNode, fieldEncodings, fi
 	// Only apply to leaf nodes (not struct/group types)
 	if schemaTree.Type != nil {
 		// Build field path from ExNamePath (skip root element)
-		fieldPath := strings.Join(schemaTree.ExNamePath[1:], ".")
+		fieldPath := common.PathToStr(schemaTree.ExNamePath[1:])
 
 		// Apply field-specific encoding if specified
 		if encoding, found := fieldEncodings[fieldPath]; found {
@@ -247,6 +248,7 @@ func (c Cmd) Run() (retErr error) {
 	schemaJSON := schemaTree.JSONSchema()
 
 	// Create output file with new settings
+	c.WriteOption.FieldDelimiter = c.ReadOption.FieldDelimiter
 	fileWriter, err := pio.NewGenericWriter(c.URI, c.WriteOption, schemaJSON)
 	if err != nil {
 		return fmt.Errorf("failed to write to [%s]: %w", c.URI, err)

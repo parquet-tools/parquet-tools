@@ -59,6 +59,7 @@ func (c Cmd) Run() (retErr error) {
 	schemaJSON := schemaTree.JSONSchema()
 
 	// Create output file with new settings
+	c.WriteOption.FieldDelimiter = c.ReadOption.FieldDelimiter
 	fileWriter, err := pio.NewGenericWriter(c.URI, c.WriteOption, schemaJSON)
 	if err != nil {
 		return fmt.Errorf("failed to write to [%s]: %w", c.URI, err)

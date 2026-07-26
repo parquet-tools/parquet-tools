@@ -37,7 +37,7 @@ func applyWriterKeyFile(kf keyFileSchema, opt *WriteOption) {
 	existing := make(map[string]struct{}, len(opt.WriterColumnKeys))
 	for _, ck := range opt.WriterColumnKeys {
 		if i := strings.IndexByte(ck, '='); i > 0 {
-			existing[common.ReformPathStr(ck[:i])] = struct{}{}
+			existing[NormalizeFieldPath(ck[:i], opt.FieldDelimiter)] = struct{}{}
 		}
 	}
 	paths := make([]string, 0, len(kf.ColumnKeys))
@@ -46,7 +46,7 @@ func applyWriterKeyFile(kf keyFileSchema, opt *WriteOption) {
 	}
 	sort.Strings(paths)
 	for _, p := range paths {
-		if _, ok := existing[common.ReformPathStr(p)]; !ok {
+		if _, ok := existing[NormalizeFieldPath(p, opt.FieldDelimiter)]; !ok {
 			opt.WriterColumnKeys = append(opt.WriterColumnKeys, p+"="+kf.ColumnKeys[p])
 		}
 	}
@@ -65,11 +65,11 @@ func applyWriterKeyFileOption(option WriteOption) (WriteOption, error) {
 }
 
 // writerColumnKey is one parsed --writer-column-key directive. Path is the
-// user-supplied path verbatim (used in error messages and as the argument
-// to writer.WithColumnEncrypted); it must be the dotted file-schema path
-// of a leaf column without the schema root (e.g. "Parent.Child", not
-// "parquet_go_root.Parent.Child"). NormalizedPath is the ReformPathStr
-// form used for schema lookup and duplicate detection. Value is the RHS
+// user-supplied path verbatim (used in error messages). It must be the
+// file-schema path of a leaf column without the schema root (e.g. "Parent.Child", not
+// "parquet_go_root.Parent.Child"). NormalizedPath uses parquet-go's internal
+// delimiter and is passed to writer.WithColumnEncrypted as well as used for
+// schema lookup and duplicate detection. Value is the RHS
 // — either the "@footer-key" sentinel or a base64-encoded AES key —
 // interpreted by downstream callers.
 type writerColumnKey struct {
@@ -82,7 +82,7 @@ type writerColumnKey struct {
 // strings into a single slice. Format validation and duplicate-path rejection
 // happen here exactly once; downstream helpers consume the result without
 // re-parsing or re-checking.
-func parseWriterColumnKeys(rawKeys []string) ([]writerColumnKey, error) {
+func parseWriterColumnKeys(rawKeys []string, fieldDelimiter string) ([]writerColumnKey, error) {
 	if len(rawKeys) == 0 {
 		return nil, nil
 	}
@@ -93,7 +93,7 @@ func parseWriterColumnKeys(rawKeys []string) ([]writerColumnKey, error) {
 		if len(parts) != 2 || parts[0] == "" || parts[1] == "" {
 			return nil, fmt.Errorf("invalid writer column key format [%s], expected 'column.path=base64key'", raw)
 		}
-		normalized := common.ReformPathStr(parts[0])
+		normalized := NormalizeFieldPath(parts[0], fieldDelimiter)
 		if _, ok := seen[normalized]; ok {
 			return nil, fmt.Errorf("duplicate writer column key path [%s]", parts[0])
 		}
@@ -137,7 +137,7 @@ func writerEncryptionOpts(option WriteOption, columnKeys []writerColumnKey) ([]w
 	opts := []writer.WriterOption{writer.WithFooterKey(footerKey)}
 	for _, ck := range columnKeys {
 		if ck.Value == writerColumnKeyFooterSentinel {
-			opts = append(opts, writer.WithColumnEncrypted(ck.Path, writer.ColumnFooterKey()))
+			opts = append(opts, writer.WithColumnEncrypted(ck.NormalizedPath, writer.ColumnFooterKey()))
 			continue
 		}
 
@@ -149,7 +149,7 @@ func writerEncryptionOpts(option WriteOption, columnKeys []writerColumnKey) ([]w
 			return nil, err
 		}
 
-		opts = append(opts, writer.WithColumnEncrypted(ck.Path, writer.ColumnKey(key)))
+		opts = append(opts, writer.WithColumnEncrypted(ck.NormalizedPath, writer.ColumnKey(key)))
 	}
 
 	if option.PlaintextFooter {
@@ -177,10 +177,8 @@ func validateWriterColumnKeySchemaPaths(columnKeys []writerColumnKey, pathToLeaf
 // writerSchemaPathToLeaf maps the canonical user-facing form of a leaf
 // column path — the external (Tag-name) path with the schema root
 // stripped, in parquet-go's ParGoPathDelimiter-separated form — to the
-// in-path used in schemaHandler.ValueColumns. That delimiter-separated
-// form is what ReformPathStr produces from the dotted path the user
-// supplies, which is why callers look up entries with
-// ReformPathStr(userInput). Only one form is accepted on purpose:
+// in-path used in schemaHandler.ValueColumns. User input is normalized into
+// that form with NormalizeFieldPath. Only one form is accepted on purpose:
 // allowing multiple forms lets the same logical column appear twice
 // in a --writer-column-key list under different spellings, which would
 // produce two WithColumnEncrypted calls for the same leaf with
@@ -196,22 +194,21 @@ func writerSchemaPathToLeaf(schemaHandler *parquetschema.SchemaHandler) map[stri
 		if stripped == "" {
 			continue
 		}
-		m[common.ReformPathStr(stripped)] = inPathStr
+		m[stripped] = inPathStr
 	}
 	return m
 }
 
 // stripWriterSchemaRoot returns the leaf path with the schema root removed,
-// in dot-separated form — matching both --writer-column-key syntax and
-// parquet-go's documented WithColumnEncrypted("rootless, dot-separated")
-// input contract. The empty return signals a path with no children below
+// in parquet-go's internal delimiter-separated form. The empty return signals
+// a path with no children below
 // the root (i.e., nothing to encrypt).
 func stripWriterSchemaRoot(path string) string {
 	parts := common.StrToPath(path)
 	if len(parts) <= 1 {
 		return ""
 	}
-	return strings.Join(parts[1:], ".")
+	return common.PathToStr(parts[1:])
 }
 
 // writerEncryptAllColumnsOpts returns one WithColumnEncrypted(path,

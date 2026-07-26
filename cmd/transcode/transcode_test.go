@@ -986,10 +986,10 @@ func TestCmdParseFieldEncodings(t *testing.T) {
 			expected:        map[string]string{"shoe_brand": "PLAIN", "shoe_name": "PLAIN"},
 		},
 		{
-			name:            "nested field path",
+			name:            "nested field path with custom delimiter",
 			dataPageVersion: 1,
-			fieldEncoding:   []string{"parent.child.leaf=RLE"},
-			expected:        map[string]string{"parent.child.leaf": "RLE"},
+			fieldEncoding:   []string{"parent/child/leaf=RLE"},
+			expected:        map[string]string{"parent\x01child\x01leaf": "RLE"},
 		},
 		{
 			name:            "case insensitive encoding",
@@ -1045,6 +1045,9 @@ func TestCmdParseFieldEncodings(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			cmd := Cmd{
 				FieldEncoding: tc.fieldEncoding,
+				ReadOption: pio.ReadOption{
+					FieldDelimiter: "/",
+				},
 				WriteOption: pio.WriteOption{
 					CompressionCodec: "SNAPPY",
 					DataPageVersion:  tc.dataPageVersion,
@@ -1177,6 +1180,11 @@ func TestCmdParseFieldBloomFilters(t *testing.T) {
 			expected:         map[string]string{"ID": "true", "Name": "4096", "Age": "false"},
 		},
 		{
+			name:             "nested field with custom delimiter",
+			fieldBloomFilter: []string{"parent/child=true"},
+			expected:         map[string]string{"parent\x01child": "true"},
+		},
+		{
 			name:             "missing equals sign",
 			fieldBloomFilter: []string{"IDtrue"},
 			errMsg:           "invalid field bloom filter format",
@@ -1220,7 +1228,12 @@ func TestCmdParseFieldBloomFilters(t *testing.T) {
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
-			cmd := Cmd{FieldBloomFilter: tc.fieldBloomFilter}
+			cmd := Cmd{
+				FieldBloomFilter: tc.fieldBloomFilter,
+				ReadOption: pio.ReadOption{
+					FieldDelimiter: "/",
+				},
+			}
 			result, err := cmd.parseFieldBloomFilters()
 
 			if tc.errMsg != "" {
@@ -1362,9 +1375,9 @@ func TestCmdParseFieldCompressions(t *testing.T) {
 			expected:         map[string]string{"shoe_brand": "SNAPPY", "shoe_name": "ZSTD"},
 		},
 		{
-			name:             "nested field path",
-			fieldCompression: []string{"parent.child.leaf=GZIP"},
-			expected:         map[string]string{"parent.child.leaf": "GZIP"},
+			name:             "nested field path with custom delimiter",
+			fieldCompression: []string{"parent/child/leaf=GZIP"},
+			expected:         map[string]string{"parent\x01child\x01leaf": "GZIP"},
 		},
 		{
 			name:             "case insensitive codec",
@@ -1420,6 +1433,9 @@ func TestCmdParseFieldCompressions(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			cmd := Cmd{
 				FieldCompression: tc.fieldCompression,
+				ReadOption: pio.ReadOption{
+					FieldDelimiter: "/",
+				},
 			}
 			result, err := cmd.parseFieldCompressions()
 

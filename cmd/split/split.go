@@ -71,6 +71,7 @@ func (c *Cmd) switchWriter() error {
 	}
 
 	var err error
+	c.WriteOption.FieldDelimiter = c.ReadOption.FieldDelimiter
 	c.current.targetFile = fmt.Sprintf(c.NameFormat, c.current.fileIndex)
 	c.current.writer, err = pio.NewGenericWriter(c.current.targetFile, c.WriteOption, c.current.schemaJSON)
 	if err != nil {

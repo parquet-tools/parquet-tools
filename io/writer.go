@@ -42,11 +42,12 @@ type WriteOption struct {
 	PageSize            int64    `help:"Page size in bytes." default:"1048576"`
 	RowGroupSize        int64    `help:"Row group size in bytes." default:"134217728"`
 	WriterFooterKey     *string  `name:"writer-footer-key" group:"Encryption" help:"base64-encoded AES-128/192/256 key. Encrypts the footer; also used for columns marked '=@footer-key' and for unlisted columns when --encrypt-all-columns is set. With --plaintext-footer the key signs the footer instead of encrypting it."`
-	WriterColumnKeys    []string `name:"writer-column-key" group:"Encryption" help:"per-column encryption directive 'column.path=VALUE'; repeatable. column.path is the dotted file-schema path of a leaf column without the schema root (e.g. Parent.Child, not parquet_go_root.Parent.Child). VALUE is a base64-encoded AES key, or the literal '@footer-key' to encrypt the column with --writer-footer-key. Columns not listed are plaintext unless --encrypt-all-columns is set." placeholder:"column.path=base64key"`
+	WriterColumnKeys    []string `name:"writer-column-key" group:"Encryption" help:"per-column encryption directive 'column.path=VALUE'; repeatable. column.path is the file-schema path of a leaf column without the schema root (e.g. Parent.Child, not parquet_go_root.Parent.Child), separated by --field-delimiter. VALUE is a base64-encoded AES key, or the literal '@footer-key' to encrypt the column with --writer-footer-key. Columns not listed are plaintext unless --encrypt-all-columns is set." placeholder:"column.path=base64key"`
 	EncryptAllColumns   bool     `name:"encrypt-all-columns" group:"Encryption" help:"encrypt every leaf column. Columns not listed in --writer-column-key use --writer-footer-key. Default: false (only columns listed in --writer-column-key are encrypted)." default:"false"`
 	PlaintextFooter     bool     `name:"plaintext-footer" group:"Encryption" help:"write a PAR1 file with a plaintext footer signed by --writer-footer-key instead of an encrypted PARE footer. Without --encrypt-all-columns or --writer-column-key the footer is signed for integrity only (columns remain plaintext)." default:"false"`
 	EncryptionAlgorithm string   `name:"encryption-algorithm" group:"Encryption" help:"encryption algorithm used when --writer-footer-key is set. AES-GCM-V1 authenticates every module; AES-GCM-CTR-V1 uses AES-CTR for page bodies (lower overhead, page body tampering not detected). Has no effect without --writer-footer-key." enum:"${writer_encryption_algorithms}" default:"AES-GCM-V1"`
 	WriterKeyFile       *string  `name:"writer-key-file" group:"Encryption" help:"path to a JSON file containing encryption keys ({footer_key, column_keys}); CLI flags override file values; --writer-column-key flags merge with file column_keys, CLI wins per path. Recommend chmod 600 on the file."`
+	FieldDelimiter      string   `kong:"-"`
 }
 
 func newLocalWriter(u *url.URL) (source.ParquetFileWriter, error) {
@@ -177,7 +178,7 @@ func NewCSVWriter(uri string, option WriteOption, schema []string) (*writer.CSVW
 		return nil, err
 	}
 
-	columnKeys, err := parseWriterColumnKeys(option.WriterColumnKeys)
+	columnKeys, err := parseWriterColumnKeys(option.WriterColumnKeys, option.FieldDelimiter)
 	if err != nil {
 		_ = fileWriter.Close()
 		return nil, err
@@ -214,7 +215,7 @@ func NewJSONWriter(uri string, option WriteOption, schema string) (*writer.JSONW
 		return nil, err
 	}
 
-	columnKeys, err := parseWriterColumnKeys(option.WriterColumnKeys)
+	columnKeys, err := parseWriterColumnKeys(option.WriterColumnKeys, option.FieldDelimiter)
 	if err != nil {
 		_ = fileWriter.Close()
 		return nil, err
@@ -251,7 +252,7 @@ func NewGenericWriter(uri string, option WriteOption, schema string) (*writer.Pa
 		return nil, err
 	}
 
-	columnKeys, err := parseWriterColumnKeys(option.WriterColumnKeys)
+	columnKeys, err := parseWriterColumnKeys(option.WriterColumnKeys, option.FieldDelimiter)
 	if err != nil {
 		_ = fileWriter.Close()
 		return nil, err

@@ -14,6 +14,7 @@ import (
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
+	"github.com/hangxie/parquet-go/v3/common"
 	"github.com/hangxie/parquet-go/v3/parquet"
 )
 
@@ -26,6 +27,15 @@ const (
 	schemeAWSS3              string = "s3"
 	schemeAzureStorageBlob   string = "wasbs"
 )
+
+// NormalizeFieldPath converts a user-facing field path into parquet-go's
+// unambiguous internal path form. An empty delimiter uses the CLI default ".".
+func NormalizeFieldPath(path, delimiter string) string {
+	if delimiter == "" {
+		delimiter = "."
+	}
+	return common.PathToStr(strings.Split(path, delimiter))
+}
 
 func parseURI(uri string) (*url.URL, error) {
 	u, err := url.Parse(uri)

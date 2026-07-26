@@ -13,7 +13,6 @@ import (
 
 	"cloud.google.com/go/storage"
 	"github.com/Azure/azure-sdk-for-go/sdk/storage/azblob/blockblob"
-	"github.com/hangxie/parquet-go/v3/common"
 	"github.com/hangxie/parquet-go/v3/reader"
 	"github.com/hangxie/parquet-go/v3/source"
 	pqazblob "github.com/hangxie/parquet-go/v3/source/azblob"
@@ -28,6 +27,7 @@ import (
 // ReadOption includes options for read operation
 type ReadOption struct {
 	Anonymous              bool              `help:"(S3, GCS, and Azure only) object is publicly accessible." default:"false"`
+	FieldDelimiter         string            `name:"field-delimiter" help:"Delimiter separating nested field path components in field and column parameters." default:"."`
 	HTTPExtraHeaders       map[string]string `mapsep:"," help:"(HTTP URI only) extra HTTP headers." default:""`
 	HTTPIgnoreTLSError     bool              `help:"(HTTP and S3 URI) ignore TLS error." default:"false"`
 	HTTPMultipleConnection bool              `help:"(HTTP URI only) use multiple HTTP connection." default:"false"`
@@ -78,7 +78,7 @@ func buildReaderOptions(option ReadOption) ([]reader.ReaderOption, error) {
 		if err != nil {
 			return nil, fmt.Errorf("invalid base64 column key for [%s]: %w", parts[0], err)
 		}
-		opts = append(opts, reader.WithColumnKey(parts[0], key))
+		opts = append(opts, reader.WithColumnKey(NormalizeFieldPath(parts[0], option.FieldDelimiter), key))
 	}
 
 	return opts, nil
@@ -94,7 +94,7 @@ func applyKeyFile(kf keyFileSchema, opt *ReadOption) {
 	existing := make(map[string]struct{}, len(opt.ColumnKeys))
 	for _, ck := range opt.ColumnKeys {
 		if i := strings.IndexByte(ck, '='); i > 0 {
-			existing[common.ReformPathStr(ck[:i])] = struct{}{}
+			existing[NormalizeFieldPath(ck[:i], opt.FieldDelimiter)] = struct{}{}
 		}
 	}
 	paths := make([]string, 0, len(kf.ColumnKeys))
@@ -103,7 +103,7 @@ func applyKeyFile(kf keyFileSchema, opt *ReadOption) {
 	}
 	sort.Strings(paths)
 	for _, p := range paths {
-		if _, ok := existing[common.ReformPathStr(p)]; !ok {
+		if _, ok := existing[NormalizeFieldPath(p, opt.FieldDelimiter)]; !ok {
 			opt.ColumnKeys = append(opt.ColumnKeys, p+"="+kf.ColumnKeys[p])
 		}
 	}

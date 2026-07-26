@@ -117,6 +117,46 @@ func TestAzureAccessDetail(t *testing.T) {
 	})
 }
 
+func TestNormalizeFieldPath(t *testing.T) {
+	testCases := []struct {
+		name      string
+		path      string
+		delimiter string
+		expected  string
+	}{
+		{
+			name:      "default-dot-delimiter",
+			path:      "parent.child",
+			delimiter: "",
+			expected:  "parent\x01child",
+		},
+		{
+			name:      "custom-slash-delimiter",
+			path:      "parent/child",
+			delimiter: "/",
+			expected:  "parent\x01child",
+		},
+		{
+			name:      "dot-is-literal-with-custom-delimiter",
+			path:      "parent.child/leaf.name",
+			delimiter: "/",
+			expected:  "parent.child\x01leaf.name",
+		},
+		{
+			name:      "multi-character-delimiter",
+			path:      "parent::child",
+			delimiter: "::",
+			expected:  "parent\x01child",
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			require.Equal(t, tc.expected, NormalizeFieldPath(tc.path, tc.delimiter))
+		})
+	}
+}
+
 func TestGetBucketRegion(t *testing.T) {
 	testCases := map[string]struct {
 		profile   string
